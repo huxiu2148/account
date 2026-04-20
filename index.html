@@ -174,6 +174,7 @@
                         <select id="form-campaign" onchange="state.lastUsedCampaign=this.value;renderQuickProducts();" class="w-full bg-gray-50 border border-transparent rounded-2xl px-4 py-3 text-sm font-bold outline-none appearance-none"></select>
                     </div>
                 </div>
+
                 <div id="quick-products-section"><label class="block text-[10px] font-black text-[#FF84C3] mb-3 ml-1 uppercase">快速加入項目</label><div id="quick-products-list" class="flex flex-wrap gap-2"></div></div>
                 <div class="bg-gray-50/50 rounded-3xl border-2 border-dashed border-gray-100 p-5">
                     <div id="cart-list" class="space-y-4"></div>
@@ -214,7 +215,7 @@
                 支援格式：名稱 [空格/Tab/逗號] 價格<br>
                 範例：<br>
                 <code class="text-pink-400 bg-pink-50 p-1 rounded">隨機卡包 150</code><br>
-                <code class="text-pink-400 bg-pink-50 p-1 rounded">手提包組 NT$1335</code>
+                <code class="text-pink-400 bg-pink-50 p-1 rounded">手提包組 1335</code>
             </p>
             <textarea id="batch-input" rows="8" class="w-full bg-gray-50 rounded-2xl p-4 text-sm font-bold outline-none border-2 border-transparent focus:border-pink-200" placeholder="貼上資料..."></textarea>
             <div class="flex gap-3 mt-6">
@@ -225,7 +226,7 @@
     </div>
 
     <script>
-        const STORAGE_KEY = 'comet_local_data_v14'; // 升級版本號避免舊格式衝突
+        const STORAGE_KEY = 'comet_local_data_v16'; 
         let state = {
             transactions: [],
             campaigns: [{ name: '一般收支', products: [] }],
@@ -240,9 +241,9 @@
 
         // --- Data Persistence ---
         function loadData() {
-            // 向下相容，嘗試讀取 V14，若無則讀取舊版 V11
             let saved = localStorage.getItem(STORAGE_KEY);
-            if (!saved) saved = localStorage.getItem('comet_local_data_v11'); 
+            if (!saved) saved = localStorage.getItem('comet_local_data_v15'); 
+            if (!saved) saved = localStorage.getItem('comet_local_data_v14'); 
             
             if (saved) {
                 const parsed = JSON.parse(saved);
@@ -282,11 +283,9 @@
                 document.getElementById(`tab${i}`).classList.toggle('hidden', i !== n);
                 const nav = document.getElementById(`nav-${i}`);
                 if (i === n) {
-                    // 選中狀態: 粉色文字 + 底部粉色邊框
                     nav.classList.add('text-[#FF84C3]', 'border-[#FF84C3]');
                     nav.classList.remove('text-gray-400', 'border-transparent');
                 } else {
-                    // 未選中狀態: 灰色文字 + 透明邊框
                     nav.classList.remove('text-[#FF84C3]', 'border-[#FF84C3]');
                     nav.classList.add('text-gray-400', 'border-transparent');
                 }
@@ -328,7 +327,7 @@
 
         function openDayDetails(d) {
             state.selectedDate = d;
-            const daily = state.transactions.filter(t => t.date === d);
+            const daily = state.transactions.filter(t => t.date === d).reverse();
             document.getElementById('day-details-title').innerText = `${d} 明細`;
             
             const renderL = (id, type) => {
@@ -400,7 +399,6 @@
             }
         }
 
-        // 快速加入購物車：相同商品自動加總
         function addToCart(name, price) {
             const existing = state.currentCart.find(i => i.name === name && i.price === price);
             if (existing) {
@@ -436,7 +434,6 @@
             document.getElementById('form-total-display').innerText = formatMoney(total);
         }
 
-        // 提交表單 (支援新增與編輯)
         document.getElementById('submit-btn').onclick = () => {
             if (!state.currentCart.length) return;
             const tx = {
@@ -450,11 +447,9 @@
             };
             
             if (state.editingId) {
-                // 編輯覆蓋
                 const idx = state.transactions.findIndex(t => t.id === state.editingId);
                 if(idx !== -1) state.transactions[idx] = tx;
             } else {
-                // 全新新增
                 state.transactions.push(tx);
             }
             
@@ -463,13 +458,11 @@
             document.getElementById('modal-overlay').classList.add('hidden');
             renderAll();
             
-            // 若從明細進來編輯的，重新打開明細查看結果
             if(state.editingId) {
                 openDayDetails(tx.date);
             }
         };
 
-        // 開啟新增模式
         document.getElementById('add-btn').onclick = () => {
             state.editingId = null; 
             state.currentCart = [];
@@ -481,32 +474,24 @@
             document.getElementById('modal-overlay').classList.remove('hidden');
         };
 
-        // 開啟編輯模式
         window.openEditModal = (id) => {
             const tx = state.transactions.find(t => t.id === id);
             if (!tx) return;
             state.editingId = id;
             state.formType = tx.type;
-            
-            // 若有詳細商品列表就載入，若無就將總項視為單一商品
             state.currentCart = tx.items_detail ? JSON.parse(JSON.stringify(tx.items_detail)) : [{ name: tx.item, price: tx.amount, qty: 1 }];
-            
             document.getElementById('form-date').value = tx.date;
             document.getElementById('form-campaign').value = tx.campaign;
             document.getElementById('modal-title').innerText = "編輯紀錄";
-            
             setFormType(tx.type);
             updateCampaignSelect();
             renderCart();
-            
-            // 隱藏背後的日明細列表
             closeDayDetails();
             document.getElementById('modal-overlay').classList.remove('hidden');
         };
 
         document.getElementById('close-modal').onclick = () => document.getElementById('modal-overlay').classList.add('hidden');
 
-        // --- Campaign Management (排序與上移/下移) ---
         function openCampaignModal() { renderCampaignManager(); document.getElementById('campaign-modal').classList.remove('hidden'); }
         
         function moveCampaign(idx, dir) {
@@ -532,14 +517,14 @@
                         </div>
                         <div class="flex gap-2">
                             <button onclick="openBatchModal(${i})" class="text-[10px] font-black text-pink-500 bg-pink-50 px-2 py-1 rounded-lg">批次匯入</button>
-                            <button onclick="if(confirm('確定刪除團務？歷史紀錄將保留但無法再快速選擇。')){state.campaigns.splice(${i},1);saveData();renderCampaignManager();updateCampaignSelect();}" class="text-gray-300"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                            <button onclick="if(confirm('確定刪除團務？歷史紀錄將保留。')){state.campaigns.splice(${i},1);saveData();renderCampaignManager();updateCampaignSelect();}" class="text-gray-300"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
                         </div>
                     </div>
                     <div class="flex flex-wrap gap-2 mb-4">
                         ${c.products.map((p, pi) => `
                             <div class="flex items-center bg-white px-3 py-1.5 rounded-xl text-[10px] font-bold shadow-sm">
                                 <span>${p.name} $${p.price}</span>
-                                <button onclick="state.campaigns[${i}].products.splice(${pi},1);saveData();renderCampaignManager();" class="ml-2 text-gray-200"><i data-lucide="x" class="w-3 h-3"></i></button>
+                                <button onclick="state.campaigns[${i}].products.splice(${pi},1);saveData();renderCampaignManager();renderQuickProducts();" class="ml-2 text-gray-200"><i data-lucide="x" class="w-3 h-3"></i></button>
                             </div>`).join('')}
                     </div>
                     <div class="flex gap-1">
@@ -554,8 +539,8 @@
         function addNewCampaign() {
             const v = document.getElementById('new-camp-input').value.trim();
             if (v) { 
-                // 將新團務預設排在最前面 (最上面)
                 state.campaigns.unshift({ name: v, products: [] }); 
+                state.lastUsedCampaign = v;
                 saveData(); 
                 renderCampaignManager(); 
                 updateCampaignSelect();
@@ -567,12 +552,13 @@
             const name = document.getElementById(`pn-${campIdx}`).value;
             const price = document.getElementById(`pp-${campIdx}`).value;
             if (name) {
-                state.campaigns[campIdx].products.push({ name, price: Number(price) });
-                saveData(); renderCampaignManager();
+                state.campaigns[campIdx].products.unshift({ name, price: Number(price) });
+                saveData(); 
+                renderCampaignManager();
+                renderQuickProducts();
             }
         }
 
-        // --- 批次匯入邏輯 ---
         function openBatchModal(campIdx) {
             const modal = document.getElementById('batch-modal');
             const confirmBtn = document.getElementById('batch-confirm-btn');
@@ -581,23 +567,25 @@
             modal.classList.remove('hidden');
             confirmBtn.onclick = () => {
                 const lines = input.value.split('\n');
+                const newProducts = [];
                 lines.forEach(line => {
                     const cleanLine = line.trim();
                     if (!cleanLine) return;
-
                     const parts = cleanLine.split(/\s+|\t+|,/);
-                    
                     if (parts.length >= 2) {
                         let priceStr = parts[parts.length - 1].replace(/[^\d.-]/g, '');
                         let nameStr = parts.slice(0, parts.length - 1).join(' ').trim();
-                        
                         const price = parseFloat(priceStr);
                         if (nameStr && !isNaN(price)) {
-                            state.campaigns[campIdx].products.push({ name: nameStr, price: price });
+                            newProducts.push({ name: nameStr, price: price });
                         }
                     }
                 });
-                saveData(); modal.classList.add('hidden'); renderCampaignManager();
+                state.campaigns[campIdx].products = [...newProducts, ...state.campaigns[campIdx].products];
+                saveData(); 
+                modal.classList.add('hidden'); 
+                renderCampaignManager();
+                renderQuickProducts();
             };
         }
 
@@ -608,10 +596,8 @@
             const p = state.yearlyTarget > 0 ? (yearlyInc / state.yearlyTarget) * 100 : 0;
             document.getElementById('yearly-progress-percent').innerText = `${p.toFixed(1)}%`;
             document.getElementById('yearly-progress-bar').style.width = `${Math.min(p, 100)}%`;
-            
             const profit = state.transactions.reduce((s, t) => s + (t.type === 'income' ? t.amount : -t.amount), 0);
             document.getElementById('lifetime-total').innerText = formatMoney(profit);
-            
             const analysisContainer = document.getElementById('campaign-analysis-container');
             const campStats = {};
             state.transactions.forEach(t => {
@@ -619,12 +605,10 @@
                 campStats[t.campaign][t.type === 'income' ? 'inc' : 'exp'] += t.amount;
             });
             const sortedCamps = Object.keys(campStats).sort((a, b) => campStats[b].inc - campStats[a].inc);
-            
             if (sortedCamps.length === 0) {
                 analysisContainer.innerHTML = '<p class="text-center py-10 text-gray-300 italic">尚未有交易數據</p>';
                 return;
             }
-
             analysisContainer.innerHTML = sortedCamps.map(name => {
                 const s = campStats[name];
                 const net = s.inc - s.exp;
