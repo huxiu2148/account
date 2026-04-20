@@ -212,10 +212,8 @@
         <div class="bg-white w-full max-w-sm rounded-[30px] p-8">
             <h4 class="text-xl font-black mb-2 text-gray-800">批次匯入商品</h4>
             <p class="text-[10px] text-gray-400 mb-6 leading-relaxed">
-                支援格式：名稱 [空格/Tab/逗號] 價格<br>
-                範例：<br>
-                <code class="text-pink-400 bg-pink-50 p-1 rounded">隨機卡包 150</code><br>
-                <code class="text-pink-400 bg-pink-50 p-1 rounded">手提包組 1335</code>
+                自動抓取名稱與價格，忽略貨幣符號與備註。<br>
+                範例：<code class="text-pink-400 bg-pink-50 p-1 rounded">手提包 NT$1335 ｜ 備註</code>
             </p>
             <textarea id="batch-input" rows="8" class="w-full bg-gray-50 rounded-2xl p-4 text-sm font-bold outline-none border-2 border-transparent focus:border-pink-200" placeholder="貼上資料..."></textarea>
             <div class="flex gap-3 mt-6">
@@ -226,7 +224,7 @@
     </div>
 
     <script>
-        const STORAGE_KEY = 'comet_local_data_v16'; 
+        const STORAGE_KEY = 'comet_local_data_v17'; 
         let state = {
             transactions: [],
             campaigns: [{ name: '一般收支', products: [] }],
@@ -242,9 +240,7 @@
         // --- Data Persistence ---
         function loadData() {
             let saved = localStorage.getItem(STORAGE_KEY);
-            if (!saved) saved = localStorage.getItem('comet_local_data_v15'); 
-            if (!saved) saved = localStorage.getItem('comet_local_data_v14'); 
-            
+            if (!saved) saved = localStorage.getItem('comet_local_data_v16');
             if (saved) {
                 const parsed = JSON.parse(saved);
                 state.transactions = parsed.transactions || [];
@@ -301,13 +297,11 @@
             const y = state.calendarDate.getFullYear(), m = state.calendarDate.getMonth();
             document.getElementById('calendar-month-year').innerText = `${y}年 ${m + 1}月`;
             const first = new Date(y, m, 1).getDay(), days = new Date(y, m + 1, 0).getDate();
-            
             const txByDate = {};
             state.transactions.forEach(t => {
                 if (!txByDate[t.date]) txByDate[t.date] = { inc: 0, exp: 0 };
                 txByDate[t.date][t.type === 'income' ? 'inc' : 'exp'] += t.amount;
             });
-
             let html = '';
             for (let i = 0; i < first; i++) html += `<div></div>`;
             for (let i = 1; i <= days; i++) {
@@ -329,7 +323,6 @@
             state.selectedDate = d;
             const daily = state.transactions.filter(t => t.date === d).reverse();
             document.getElementById('day-details-title').innerText = `${d} 明細`;
-            
             const renderL = (id, type) => {
                 const items = daily.filter(t => t.type === type);
                 document.getElementById(id).innerHTML = items.length ? items.map(t => `
@@ -445,22 +438,17 @@
                 campaign: document.getElementById('form-campaign').value,
                 items_detail: JSON.parse(JSON.stringify(state.currentCart))
             };
-            
             if (state.editingId) {
                 const idx = state.transactions.findIndex(t => t.id === state.editingId);
                 if(idx !== -1) state.transactions[idx] = tx;
             } else {
                 state.transactions.push(tx);
             }
-            
             state.lastUsedCampaign = tx.campaign;
             saveData();
             document.getElementById('modal-overlay').classList.add('hidden');
             renderAll();
-            
-            if(state.editingId) {
-                openDayDetails(tx.date);
-            }
+            if(state.editingId) openDayDetails(tx.date);
         };
 
         document.getElementById('add-btn').onclick = () => {
@@ -571,16 +559,26 @@
                 lines.forEach(line => {
                     const cleanLine = line.trim();
                     if (!cleanLine) return;
-                    const parts = cleanLine.split(/\s+|\t+|,/);
-                    if (parts.length >= 2) {
-                        let priceStr = parts[parts.length - 1].replace(/[^\d.-]/g, '');
-                        let nameStr = parts.slice(0, parts.length - 1).join(' ').trim();
-                        const price = parseFloat(priceStr);
-                        if (nameStr && !isNaN(price)) {
-                            newProducts.push({ name: nameStr, price: price });
-                        }
+                    
+                    // 1. 先用 Regex 找出字串中第一個數字（支援負號與小數點）
+                    // 邏輯：尋找前面可能帶有貨幣符號，後面跟著數字的區塊
+                    const priceMatch = cleanLine.match(/(-?\d+(\.\d+)?)/);
+                    
+                    if (priceMatch) {
+                        const price = parseFloat(priceMatch[0]);
+                        // 2. 名稱則是數字出現之前的所有內容，並過濾掉尾部空白
+                        let name = cleanLine.split(priceMatch[0])[0].trim();
+                        
+                        // 3. 過濾掉名稱末尾常見的貨幣符號或多餘字元 (如 NT$, $, ￥ 等)
+                        name = name.replace(/(NT\$|\$|₩|JPY|￥|元)\s*$/gi, '').trim();
+                        
+                        // 4. 若名稱為空（可能只有數字），則給予預設
+                        if (!name) name = "未命名項目";
+                        
+                        newProducts.push({ name, price });
                     }
                 });
+                // 將新匯入的排在舊的產品之前
                 state.campaigns[campIdx].products = [...newProducts, ...state.campaigns[campIdx].products];
                 saveData(); 
                 modal.classList.add('hidden'); 
