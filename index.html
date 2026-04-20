@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>COMET 雲端營業記帳系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        :root {
+            --pink: #FF84C3;
+            --yellow: #E1E668;
+            --orange: #FF9E23;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f8fafc;
+            color: #1e293b;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+        .animate-fade-in { animation: fadeIn 0.2s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+    </style>
+</head>
+<body class="selection:bg-[#FF84C3]/30">
+
+    <!-- Header & Top Navigation -->
+    <header class="bg-white/90 backdrop-blur-md sticky top-0 z-30 border-b border-gray-100 px-safe-top shadow-sm">
+        <div class="max-w-md mx-auto px-6 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <h1 class="text-2xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-[#FF84C3] to-[#FF9E23]">
+                    COMET
+                </h1>
+            </div>
+            
+            <div class="flex items-center gap-2">
+                <button onclick="openCampaignModal()" class="flex items-center justify-center gap-1 px-3 py-1.5 bg-pink-50 rounded-full text-[#FF84C3] hover:bg-pink-100 transition-colors shadow-sm text-[11px] font-bold">
+                    <i data-lucide="folder-kanban" class="w-3.5 h-3.5"></i>
+                    團務管理
+                </button>
+                <div id="history-total-chip" class="bg-gray-100 px-3 py-1.5 rounded-full text-[10px] font-bold text-gray-500 italic">
+                    總收 $0
+                </div>
+            </div>
+        </div>
+
+        <div class="max-w-md mx-auto flex justify-around border-t border-gray-50">
+            <button onclick="switchTab(1)" id="nav-1" class="nav-btn text-[#FF84C3] border-[#FF84C3] flex-1 py-3 text-[13px] font-bold border-b-2 transition-all flex items-center justify-center gap-1.5">
+                <i data-lucide="calendar-days" class="w-4 h-4"></i> 月曆
+            </button>
+            <button onclick="switchTab(2)" id="nav-2" class="nav-btn text-gray-400 border-transparent flex-1 py-3 text-[13px] font-bold border-b-2 transition-all flex items-center justify-center gap-1.5">
+                <i data-lucide="list-todo" class="w-4 h-4"></i> 報表
+            </button>
+            <button onclick="switchTab(3)" id="nav-3" class="nav-btn text-gray-400 border-transparent flex-1 py-3 text-[13px] font-bold border-b-2 transition-all flex items-center justify-center gap-1.5">
+                <i data-lucide="pie-chart" class="w-4 h-4"></i> 分析
+            </button>
+        </div>
+    </header>
+
+    <main class="max-w-md mx-auto px-6 py-6 pb-24">
+        <!-- Tab 1: 月曆 -->
+        <div id="tab1" class="flex flex-col animate-fade-in w-full">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-black text-gray-800" id="calendar-month-year">讀取中...</h2>
+                <div class="flex gap-2">
+                    <button onclick="changeMonth(-1)" class="p-2.5 bg-white rounded-full shadow-sm text-gray-400 hover:text-[#FF84C3] transition-colors"><i data-lucide="chevron-up" class="w-5 h-5"></i></button>
+                    <button onclick="changeMonth(1)" class="p-2.5 bg-white rounded-full shadow-sm text-gray-400 hover:text-[#FF84C3] transition-colors"><i data-lucide="chevron-down" class="w-5 h-5"></i></button>
+                </div>
+            </div>
+            <div class="grid grid-cols-7 gap-1 text-center mb-2">
+                <div class="text-[10px] font-bold text-pink-400">日</div>
+                <div class="text-[10px] font-bold text-gray-400">一</div>
+                <div class="text-[10px] font-bold text-gray-400">二</div>
+                <div class="text-[10px] font-bold text-gray-400">三</div>
+                <div class="text-[10px] font-bold text-gray-400">四</div>
+                <div class="text-[10px] font-bold text-gray-400">五</div>
+                <div class="text-[10px] font-bold text-gray-400">六</div>
+            </div>
+            <div id="calendar-grid" class="grid grid-cols-7 gap-1 touch-pan-y"></div>
+        </div>
+
+        <!-- Tab 2: 報表 -->
+        <div id="tab2" class="hidden flex-col animate-fade-in w-full">
+            <h2 class="text-xl font-bold text-gray-800 mb-6"><span id="current-year-display"></span> 年度月報表</h2>
+            <div id="monthly-container" class="grid grid-cols-1 gap-3"></div>
+        </div>
+
+        <!-- Tab 3: 分析 -->
+        <div id="tab3" class="hidden flex-col animate-fade-in w-full">
+            <h2 class="text-xl font-bold text-gray-800 mb-6">數據統計與目標</h2>
+            <div class="grid grid-cols-2 gap-4 mb-6">
+                <div class="bg-gray-900 rounded-3xl p-5 shadow-xl text-white">
+                    <p class="text-[9px] font-bold opacity-50 uppercase tracking-widest">Lifetime Profit</p>
+                    <h3 class="text-[10px] font-bold opacity-60">累計總收益 (利潤)</h3>
+                    <p id="lifetime-total" class="text-xl font-black text-[#E1E668] mt-1">$0</p>
+                </div>
+                <div class="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+                    <p class="text-[9px] font-black text-[#FF84C3] uppercase tracking-widest">Monthly Avg</p>
+                    <h3 class="text-[10px] font-bold text-gray-400">平均月營收</h3>
+                    <p id="average-monthly-revenue" class="text-xl font-black text-gray-800 mt-1">$0</p>
+                </div>
+            </div>
+
+            <!-- 目標進度 -->
+            <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 mb-8">
+                <div class="flex justify-between items-start mb-4">
+                    <div>
+                        <p class="text-xs font-bold text-gray-400 uppercase tracking-widest">Annual Goal</p>
+                        <h3 class="text-lg font-black text-gray-800">今年度營業額目標</h3>
+                    </div>
+                    <div class="text-right">
+                        <input type="number" id="target-input" onchange="state.yearlyTarget=Number(this.value);saveData();renderTab3();" class="w-28 text-right bg-transparent text-xl font-black text-[#FF84C3] outline-none border-b-2 border-dashed border-[#FF84C3]/20 focus:border-[#FF84C3]" value="100000">
+                    </div>
+                </div>
+                <div class="space-y-4">
+                    <div class="flex justify-between items-end">
+                        <div><p class="text-xs font-bold text-gray-500">今年已達成</p><p id="yearly-current-total" class="text-2xl font-black text-gray-800">$0</p></div>
+                        <div class="text-right"><p class="text-xs font-bold text-[#FF9E23]">達成率</p><p id="yearly-progress-percent" class="text-2xl font-black text-[#FF9E23]">0%</p></div>
+                    </div>
+                    <div class="h-4 bg-gray-50 rounded-full overflow-hidden border border-gray-100 p-0.5">
+                        <div id="yearly-progress-bar" class="h-full bg-gradient-to-r from-[#FF84C3] to-[#FF9E23] rounded-full transition-all duration-1000" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 團務收益細節 -->
+            <h2 class="text-lg font-black text-gray-800 mb-4 ml-2">各團務營收分析</h2>
+            <div id="campaign-analysis-container" class="space-y-4"></div>
+        </div>
+    </main>
+
+    <!-- FAB -->
+    <button id="add-btn" class="fixed bottom-8 right-6 w-14 h-14 bg-gradient-to-tr from-[#FF84C3] to-[#FF9E23] text-white rounded-full shadow-lg flex items-center justify-center active:scale-90 transition-all z-[40]">
+        <i data-lucide="plus" class="w-7 h-7"></i>
+    </button>
+
+    <!-- 日明細 Drawer -->
+    <div id="day-details-overlay" class="fixed inset-0 bg-black/20 backdrop-blur-sm z-[50] hidden opacity-0 transition-opacity duration-300" onclick="closeDayDetails()"></div>
+    <div id="day-details-modal" class="fixed inset-x-0 bottom-0 z-[55] bg-white rounded-t-[40px] shadow-[0_-20px_40px_rgba(0,0,0,0.1)] transform translate-y-full transition-transform duration-300 p-6 pb-safe max-h-[85vh] flex flex-col max-w-md mx-auto w-full">
+        <div class="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-5" onclick="closeDayDetails()"></div>
+        <div class="flex justify-between items-center mb-6 shrink-0">
+            <h3 class="text-2xl font-black text-gray-800" id="day-details-title">明細</h3>
+            <button onclick="closeDayDetails()" class="text-gray-400 bg-gray-50 p-2 rounded-full"><i data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
+        <div class="overflow-y-auto no-scrollbar flex-1 space-y-6 pb-20">
+            <div><h3 class="text-[10px] font-black text-gray-300 mb-3 px-2 uppercase tracking-widest">Income</h3><div id="income-list" class="space-y-2"></div></div>
+            <div><h3 class="text-[10px] font-black text-gray-300 mb-3 px-2 uppercase tracking-widest">Expense</h3><div id="expense-list" class="space-y-2"></div></div>
+        </div>
+    </div>
+
+    <!-- Modal: 新增/編輯紀錄 -->
+    <div id="modal-overlay" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden z-[60] animate-fade-in flex items-end sm:items-center justify-center">
+        <div class="bg-white w-full sm:w-[500px] sm:rounded-[40px] rounded-t-[40px] p-8 shadow-2xl flex flex-col max-h-[94vh]">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-2xl font-black text-gray-800">記帳</h3>
+                <button id="close-modal" class="text-gray-400 bg-gray-50 p-3 rounded-full"><i data-lucide="x" class="w-6 h-6"></i></button>
+            </div>
+            <div class="flex bg-gray-100 p-1.5 rounded-2xl mb-6">
+                <button type="button" id="type-income" onclick="setFormType('income')" class="flex-1 py-3 rounded-[14px] text-sm font-black transition-all">收入</button>
+                <button type="button" id="type-expense" onclick="setFormType('expense')" class="flex-1 py-3 rounded-[14px] text-sm font-black transition-all">支出</button>
+            </div>
+            <div class="overflow-y-auto no-scrollbar flex-1 space-y-6">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-[10px] font-black text-gray-400 mb-2 ml-1 uppercase">Date</label>
+                        <input type="date" id="form-date" class="w-full bg-gray-50 border border-transparent rounded-2xl px-4 py-3 text-sm font-bold focus:bg-white focus:border-[#FF84C3]/20 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-gray-400 mb-2 ml-1 uppercase">Campaign</label>
+                        <select id="form-campaign" onchange="state.lastUsedCampaign=this.value;renderQuickProducts();" class="w-full bg-gray-50 border border-transparent rounded-2xl px-4 py-3 text-sm font-bold outline-none appearance-none"></select>
+                    </div>
+                </div>
+                <div id="quick-products-section"><label class="block text-[10px] font-black text-[#FF84C3] mb-3 ml-1 uppercase">快速加入項目</label><div id="quick-products-list" class="flex flex-wrap gap-2"></div></div>
+                <div class="bg-gray-50/50 rounded-3xl border-2 border-dashed border-gray-100 p-5">
+                    <div id="cart-list" class="space-y-4"></div>
+                    <div id="empty-cart-text" class="text-center py-6 text-xs text-gray-300 font-bold italic">尚未選擇商品</div>
+                    <button type="button" onclick="addBlankItem()" class="w-full mt-4 py-3 border border-gray-200 rounded-2xl text-xs font-black text-gray-400 hover:text-[#FF84C3] transition-all border-dashed">+ 手動輸入新項目</button>
+                </div>
+            </div>
+            <div class="pt-6 mt-4 border-t border-gray-100">
+                <div class="bg-gray-900 rounded-3xl p-5 flex justify-between items-center text-white mb-4">
+                    <span class="text-sm font-bold opacity-60">合計金額</span>
+                    <span id="form-total-display" class="text-3xl font-black text-[#E1E668]">$0</span>
+                </div>
+                <button type="button" id="submit-btn" class="w-full bg-gradient-to-r from-[#FF84C3] to-[#FF9E23] text-white font-black rounded-[20px] py-5 shadow-lg active:scale-95 transition-all text-lg">確認儲存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: 管理團務 -->
+    <div id="campaign-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden z-[70] animate-fade-in flex items-center justify-center p-6">
+        <div class="bg-white w-full max-w-md rounded-[40px] p-8 shadow-2xl flex flex-col max-h-[85vh]">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-2xl font-black text-gray-800">團務管理</h3>
+                <button onclick="document.getElementById('campaign-modal').classList.add('hidden'); updateCampaignSelect();" class="text-gray-400 bg-gray-50 p-2 rounded-full"><i data-lucide="x" class="w-6 h-6"></i></button>
+            </div>
+            <div class="flex gap-2 mb-6">
+                <input type="text" id="new-camp-input" placeholder="新增團務名稱..." class="flex-1 bg-gray-50 border-none rounded-2xl px-5 py-4 text-sm font-bold outline-none">
+                <button onclick="addNewCampaign()" class="px-6 bg-[#FF84C3] text-white rounded-2xl text-sm font-black shadow-lg">新增</button>
+            </div>
+            <div id="campaign-manage-list" class="flex-1 overflow-y-auto space-y-6 pr-1 no-scrollbar"></div>
+        </div>
+    </div>
+
+    <!-- Modal: 批次匯入 -->
+    <div id="batch-modal" class="fixed inset-0 bg-black/80 backdrop-blur-md hidden z-[80] flex items-center justify-center p-8 animate-fade-in">
+        <div class="bg-white w-full max-w-sm rounded-[30px] p-8">
+            <h4 class="text-xl font-black mb-2 text-gray-800">批次匯入商品</h4>
+            <p class="text-[10px] text-gray-400 mb-6 leading-relaxed">
+                支援格式：名稱 [空格/Tab/逗號] 價格<br>
+                範例：<br>
+                <code class="text-pink-400 bg-pink-50 p-1 rounded">隨機卡包 150</code><br>
+                <code class="text-pink-400 bg-pink-50 p-1 rounded">手提包組 NT$1335</code>
+            </p>
+            <textarea id="batch-input" rows="8" class="w-full bg-gray-50 rounded-2xl p-4 text-sm font-bold outline-none border-2 border-transparent focus:border-pink-200" placeholder="貼上資料..."></textarea>
+            <div class="flex gap-3 mt-6">
+                <button onclick="document.getElementById('batch-modal').classList.add('hidden')" class="flex-1 py-4 bg-gray-100 rounded-2xl text-sm font-bold text-gray-500">取消</button>
+                <button id="batch-confirm-btn" class="flex-1 py-4 bg-[#FF84C3] rounded-2xl text-sm font-bold text-white shadow-lg">開始匯入</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const STORAGE_KEY = 'comet_local_data_v11';
+        let state = {
+            transactions: [],
+            campaigns: [{ name: '一般收支', products: [] }],
+            yearlyTarget: 100000,
+            selectedDate: new Date().toISOString().split('T')[0],
+            calendarDate: new Date(),
+            currentCart: [],
+            formType: 'income',
+            editingId: null,
+            lastUsedCampaign: '一般收支'
+        };
+
+        // --- Data Persistence ---
+        function loadData() {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                state.transactions = parsed.transactions || [];
+                state.campaigns = parsed.campaigns || [{ name: '一般收支', products: [] }];
+                state.yearlyTarget = parsed.yearlyTarget || 100000;
+                state.lastUsedCampaign = parsed.lastUsedCampaign || '一般收支';
+            }
+            document.getElementById('target-input').value = state.yearlyTarget;
+            renderAll();
+        }
+
+        function saveData() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                transactions: state.transactions,
+                campaigns: state.campaigns,
+                yearlyTarget: state.yearlyTarget,
+                lastUsedCampaign: state.lastUsedCampaign
+            }));
+        }
+
+        // --- UI Rendering ---
+        const formatMoney = (a) => new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', minimumFractionDigits: 0 }).format(a);
+        
+        function renderAll() {
+            renderCalendar();
+            renderTab2();
+            renderTab3();
+            updateCampaignSelect();
+            const totalRec = state.transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+            document.getElementById('history-total-chip').innerText = `總收 ${formatMoney(totalRec)}`;
+            lucide.createIcons();
+        }
+
+        function switchTab(n) {
+            [1, 2, 3].forEach(i => document.getElementById(`tab${i}`).classList.toggle('hidden', i !== n));
+            document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('text-[#FF84C3]', 'border-[#FF84C3]'));
+            document.getElementById(`nav-${n}`).classList.add('text-[#FF84C3]', 'border-[#FF84C3]');
+            if (n === 3) renderTab3();
+        }
+
+        // --- Calendar ---
+        function changeMonth(d) { state.calendarDate.setMonth(state.calendarDate.getMonth() + d); renderCalendar(); }
+        
+        function renderCalendar() {
+            const y = state.calendarDate.getFullYear(), m = state.calendarDate.getMonth();
+            document.getElementById('calendar-month-year').innerText = `${y}年 ${m + 1}月`;
+            const first = new Date(y, m, 1).getDay(), days = new Date(y, m + 1, 0).getDate();
+            
+            const txByDate = {};
+            state.transactions.forEach(t => {
+                if (!txByDate[t.date]) txByDate[t.date] = { inc: 0, exp: 0 };
+                txByDate[t.date][t.type === 'income' ? 'inc' : 'exp'] += t.amount;
+            });
+
+            let html = '';
+            for (let i = 0; i < first; i++) html += `<div></div>`;
+            for (let i = 1; i <= days; i++) {
+                const dStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+                const tx = txByDate[dStr];
+                const isSelected = state.selectedDate === dStr;
+                html += `
+                    <div class="aspect-square p-1 border rounded-[14px] flex flex-col items-center cursor-pointer active:scale-95 transition-all bg-white border-gray-50 ${isSelected?'ring-2 ring-[#FF84C3]':''}" onclick="openDayDetails('${dStr}')">
+                        <span class="text-[10px] font-bold text-gray-400">${i}</span>
+                        <div class="mt-auto w-full text-center">
+                            ${tx && tx.inc > 0 ? `<div class="text-[8px] font-black text-[#FF84C3] truncate">$${tx.inc}</div>` : ''}
+                        </div>
+                    </div>`;
+            }
+            document.getElementById('calendar-grid').innerHTML = html;
+        }
+
+        function openDayDetails(d) {
+            state.selectedDate = d;
+            const daily = state.transactions.filter(t => t.date === d);
+            document.getElementById('day-details-title').innerText = `${d} 明細`;
+            
+            const renderL = (id, type) => {
+                const items = daily.filter(t => t.type === type);
+                document.getElementById(id).innerHTML = items.length ? items.map(t => `
+                    <div onclick="openEditModal('${t.id}')" class="bg-white p-4 rounded-2xl border border-gray-100 flex justify-between items-center shadow-sm">
+                        <div class="truncate px-2"><span class="block font-black text-sm truncate">${t.item}</span><span class="text-[9px] font-bold text-gray-400">${t.campaign}</span></div>
+                        <div class="flex items-center gap-3">
+                            <span class="font-black text-lg ${type==='income'?'text-[#FF84C3]':'text-gray-400'}">${formatMoney(t.amount)}</span>
+                            <button onclick="event.stopPropagation(); deleteTx('${t.id}')" class="text-gray-200 hover:text-red-400"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                        </div>
+                    </div>`).join('') : '<p class="text-center py-4 text-[10px] text-gray-300">無紀錄</p>';
+            };
+            renderL('income-list', 'income'); renderL('expense-list', 'expense');
+            document.getElementById('day-details-overlay').classList.remove('hidden');
+            setTimeout(() => {
+                document.getElementById('day-details-overlay').classList.remove('opacity-0');
+                document.getElementById('day-details-modal').classList.remove('translate-y-full');
+            }, 10);
+            renderCalendar();
+            lucide.createIcons();
+        }
+
+        function deleteTx(id) {
+            state.transactions = state.transactions.filter(t => t.id !== id);
+            saveData();
+            openDayDetails(state.selectedDate);
+            renderAll();
+        }
+
+        function closeDayDetails() {
+            document.getElementById('day-details-modal').classList.add('translate-y-full');
+            document.getElementById('day-details-overlay').classList.add('opacity-0');
+            setTimeout(() => document.getElementById('day-details-overlay').classList.add('hidden'), 300);
+        }
+
+        // --- Transaction Form ---
+        function setFormType(type) {
+            state.formType = type;
+            const isInc = type === 'income';
+            document.getElementById('type-income').className = `flex-1 py-3 rounded-[14px] text-sm font-black transition-all ${isInc ? 'bg-white text-[#FF84C3] shadow-sm' : 'text-gray-400'}`;
+            document.getElementById('type-expense').className = `flex-1 py-3 rounded-[14px] text-sm font-black transition-all ${!isInc ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-400'}`;
+        }
+
+        function updateCampaignSelect() {
+            const select = document.getElementById('form-campaign');
+            select.innerHTML = state.campaigns.map(c => `<option value="${c.name}" ${c.name === state.lastUsedCampaign ? 'selected' : ''}>${c.name}</option>`).join('');
+            renderQuickProducts();
+        }
+
+        function renderQuickProducts() {
+            const camp = state.campaigns.find(c => c.name === state.lastUsedCampaign);
+            const list = document.getElementById('quick-products-list');
+            if (camp && camp.products.length) {
+                document.getElementById('quick-products-section').classList.remove('hidden');
+                list.innerHTML = camp.products.map(p => `
+                    <button type="button" onclick="state.currentCart.push({name:'${p.name}',price:${p.price},qty:1});renderCart();" class="px-4 py-2 bg-white border border-gray-100 rounded-xl text-xs font-black text-gray-500 shadow-sm active:scale-95">
+                        ${p.name}
+                    </button>`).join('');
+            } else {
+                document.getElementById('quick-products-section').classList.add('hidden');
+            }
+        }
+
+        function renderCart() {
+            const list = document.getElementById('cart-list');
+            document.getElementById('empty-cart-text').classList.toggle('hidden', state.currentCart.length > 0);
+            list.innerHTML = state.currentCart.map((item, idx) => `
+                <div class="flex items-center gap-4 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+                    <div class="flex-1">
+                        <input type="text" value="${item.name}" oninput="state.currentCart[${idx}].name=this.value" class="w-full bg-transparent text-sm font-black text-gray-800 outline-none mb-1">
+                        <input type="number" value="${item.price}" oninput="state.currentCart[${idx}].price=Number(this.value);calculateCartTotal();" class="w-24 bg-transparent text-sm font-black text-[#FF84C3] outline-none">
+                    </div>
+                    <div class="flex items-center bg-gray-50 rounded-xl p-1 gap-2 px-2">
+                        <button type="button" onclick="state.currentCart[${idx}].qty=Math.max(1,state.currentCart[${idx}].qty-1);renderCart();"><i data-lucide="minus" class="w-3 h-3 text-gray-400"></i></button>
+                        <span class="text-sm font-black">${item.qty}</span>
+                        <button type="button" onclick="state.currentCart[${idx}].qty+=1;renderCart();"><i data-lucide="plus" class="w-3 h-3 text-gray-400"></i></button>
+                    </div>
+                    <button type="button" onclick="state.currentCart.splice(${idx}, 1); renderCart();" class="text-gray-200"><i data-lucide="x" class="w-5 h-5"></i></button>
+                </div>`).join('');
+            lucide.createIcons();
+            calculateCartTotal();
+        }
+
+        function calculateCartTotal() {
+            const total = state.currentCart.reduce((s, i) => s + (i.price * i.qty), 0);
+            document.getElementById('form-total-display').innerText = formatMoney(total);
+        }
+
+        document.getElementById('submit-btn').onclick = () => {
+            if (!state.currentCart.length) return;
+            const tx = {
+                id: state.editingId || Date.now().toString(),
+                date: document.getElementById('form-date').value,
+                type: state.formType,
+                item: state.currentCart.map(i => `${i.name}${i.qty>1?' x'+i.qty:''}`).join(', '),
+                amount: state.currentCart.reduce((s, i) => s + (i.price * i.qty), 0),
+                campaign: state.lastUsedCampaign,
+                items_detail: JSON.parse(JSON.stringify(state.currentCart))
+            };
+            if (state.editingId) state.transactions[state.transactions.findIndex(t => t.id === state.editingId)] = tx;
+            else state.transactions.push(tx);
+            saveData();
+            document.getElementById('modal-overlay').classList.add('hidden');
+            renderAll();
+        };
+
+        document.getElementById('add-btn').onclick = () => {
+            state.editingId = null; state.currentCart = [];
+            document.getElementById('form-date').value = state.selectedDate;
+            setFormType('income');
+            renderCart();
+            updateCampaignSelect();
+            document.getElementById('modal-overlay').classList.remove('hidden');
+        };
+
+        document.getElementById('close-modal').onclick = () => document.getElementById('modal-overlay').classList.add('hidden');
+
+        // --- Campaign Management ---
+        function openCampaignModal() { renderCampaignManager(); document.getElementById('campaign-modal').classList.remove('hidden'); }
+        
+        function renderCampaignManager() {
+            document.getElementById('campaign-manage-list').innerHTML = state.campaigns.map((c, i) => `
+                <div class="bg-gray-50 rounded-3xl p-5 border border-gray-100">
+                    <div class="flex justify-between items-center mb-4">
+                        <span class="font-black text-gray-800">${c.name}</span>
+                        <div class="flex gap-2">
+                            <button onclick="openBatchModal(${i})" class="text-[10px] font-black text-pink-500 bg-pink-50 px-2 py-1 rounded-lg">批次匯入</button>
+                            <button onclick="if(confirm('確定刪除團務？歷史紀錄將保留但無法再快速選擇。')){state.campaigns.splice(${i},1);saveData();renderCampaignManager();}" class="text-gray-300"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                        </div>
+                    </div>
+                    <div class="flex flex-wrap gap-2 mb-4">
+                        ${c.products.map((p, pi) => `
+                            <div class="flex items-center bg-white px-3 py-1.5 rounded-xl text-[10px] font-bold shadow-sm">
+                                <span>${p.name} $${p.price}</span>
+                                <button onclick="state.campaigns[${i}].products.splice(${pi},1);saveData();renderCampaignManager();" class="ml-2 text-gray-200"><i data-lucide="x" class="w-3 h-3"></i></button>
+                            </div>`).join('')}
+                    </div>
+                    <div class="flex gap-1">
+                        <input type="text" id="pn-${i}" placeholder="名稱" class="flex-1 px-3 py-2 bg-white rounded-xl text-xs font-bold outline-none">
+                        <input type="number" id="pp-${i}" placeholder="價格" class="w-16 px-3 py-2 bg-white rounded-xl text-xs font-bold outline-none">
+                        <button onclick="addSingleProduct(${i})" class="bg-[#E1E668] px-4 rounded-xl text-xs font-black">加入</button>
+                    </div>
+                </div>`).join('');
+            lucide.createIcons();
+        }
+
+        function addNewCampaign() {
+            const v = document.getElementById('new-camp-input').value.trim();
+            if (v) { state.campaigns.push({ name: v, products: [] }); saveData(); renderCampaignManager(); document.getElementById('new-camp-input').value = ''; }
+        }
+
+        function addSingleProduct(campIdx) {
+            const name = document.getElementById(`pn-${campIdx}`).value;
+            const price = document.getElementById(`pp-${campIdx}`).value;
+            if (name) {
+                state.campaigns[campIdx].products.push({ name, price: Number(price) });
+                saveData(); renderCampaignManager();
+            }
+        }
+
+        // --- 優化後的批次匯入邏輯 ---
+        function openBatchModal(campIdx) {
+            const modal = document.getElementById('batch-modal');
+            const confirmBtn = document.getElementById('batch-confirm-btn');
+            const input = document.getElementById('batch-input');
+            input.value = '';
+            modal.classList.remove('hidden');
+            confirmBtn.onclick = () => {
+                const lines = input.value.split('\n');
+                lines.forEach(line => {
+                    const cleanLine = line.trim();
+                    if (!cleanLine) return;
+
+                    // 解析邏輯：尋找最後一個可能的「數值區塊」
+                    // 1. 先把逗號和 NT$ 這些雜質去掉 (保留負號用於折扣)
+                    const parts = cleanLine.split(/\s+|\t+|,/);
+                    
+                    if (parts.length >= 2) {
+                        // 最後一個部分通常是價格
+                        let priceStr = parts[parts.length - 1].replace(/[^\d.-]/g, '');
+                        let nameStr = parts.slice(0, parts.length - 1).join(' ').trim();
+                        
+                        const price = parseFloat(priceStr);
+                        if (nameStr && !isNaN(price)) {
+                            state.campaigns[campIdx].products.push({ name: nameStr, price: price });
+                        }
+                    }
+                });
+                saveData(); modal.classList.add('hidden'); renderCampaignManager();
+            };
+        }
+
+        function renderTab3() {
+            const y = new Date().getFullYear();
+            const yearlyInc = state.transactions.filter(t => t.type === 'income' && new Date(t.date).getFullYear() === y).reduce((s, t) => s + t.amount, 0);
+            document.getElementById('yearly-current-total').innerText = formatMoney(yearlyInc);
+            const p = state.yearlyTarget > 0 ? (yearlyInc / state.yearlyTarget) * 100 : 0;
+            document.getElementById('yearly-progress-percent').innerText = `${p.toFixed(1)}%`;
+            document.getElementById('yearly-progress-bar').style.width = `${Math.min(p, 100)}%`;
+            
+            const profit = state.transactions.reduce((s, t) => s + (t.type === 'income' ? t.amount : -t.amount), 0);
+            document.getElementById('lifetime-total').innerText = formatMoney(profit);
+            
+            const analysisContainer = document.getElementById('campaign-analysis-container');
+            const campStats = {};
+            state.transactions.forEach(t => {
+                if (!campStats[t.campaign]) campStats[t.campaign] = { inc: 0, exp: 0 };
+                campStats[t.campaign][t.type === 'income' ? 'inc' : 'exp'] += t.amount;
+            });
+            const sortedCamps = Object.keys(campStats).sort((a, b) => campStats[b].inc - campStats[a].inc);
+            
+            if (sortedCamps.length === 0) {
+                analysisContainer.innerHTML = '<p class="text-center py-10 text-gray-300 italic">尚未有交易數據</p>';
+                return;
+            }
+
+            analysisContainer.innerHTML = sortedCamps.map(name => {
+                const s = campStats[name];
+                const net = s.inc - s.exp;
+                return `
+                    <div class="bg-white p-5 rounded-[28px] shadow-sm border border-gray-50">
+                        <div class="flex justify-between items-start mb-3">
+                            <h4 class="font-black text-gray-800">${name}</h4>
+                            <span class="text-[10px] font-bold text-gray-400 bg-gray-50 px-2 py-0.5 rounded-md uppercase">Campaign</span>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2">
+                            <div><p class="text-[8px] font-black text-gray-400 uppercase">Income</p><p class="text-sm font-black text-[#FF84C3]">${formatMoney(s.inc)}</p></div>
+                            <div><p class="text-[8px] font-black text-gray-400 uppercase">Expense</p><p class="text-sm font-black text-gray-400">${formatMoney(s.exp)}</p></div>
+                            <div class="text-right"><p class="text-[8px] font-black text-gray-400 uppercase">Profit</p><p class="text-sm font-black ${net >= 0 ? 'text-gray-900' : 'text-red-400'}">${formatMoney(net)}</p></div>
+                        </div>
+                    </div>`;
+            }).join('');
+        }
+
+        function renderTab2() {
+            const y = new Date().getFullYear();
+            const container = document.getElementById('monthly-container');
+            let h = '';
+            for(let i=12; i>=1; i--) {
+                const txs = state.transactions.filter(t => new Date(t.date).getFullYear() === y && new Date(t.date).getMonth()+1 === i);
+                const inc = txs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+                const exp = txs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+                if (inc === 0 && exp === 0) continue;
+                h += `<div class="bg-white p-5 rounded-3xl border border-gray-100 flex justify-between items-center shadow-sm"><div><span class="text-xs font-black text-gray-300 uppercase">${i}月</span><div class="text-xs font-bold text-gray-400">進 ${formatMoney(inc)} / 支 ${formatMoney(exp)}</div></div><div class="text-lg font-black ${inc-exp>=0?'text-gray-800':'text-red-400'}">${formatMoney(inc-exp)}</div></div>`;
+            }
+            container.innerHTML = h || '<p class="text-center py-10 text-gray-300 italic">尚未有數據</p>';
+        }
+
+        function addBlankItem() { state.currentCart.push({ name: '新項目', price: 0, qty: 1 }); renderCart(); }
+        window.onload = loadData;
+    </script>
+</body>
+</html>
