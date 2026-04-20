@@ -156,12 +156,12 @@
     <div id="modal-overlay" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden z-[60] animate-fade-in flex items-end sm:items-center justify-center">
         <div class="bg-white w-full sm:w-[500px] sm:rounded-[40px] rounded-t-[40px] p-8 shadow-2xl flex flex-col max-h-[94vh]">
             <div class="flex justify-between items-center mb-6">
-                <h3 class="text-2xl font-black text-gray-800">記帳</h3>
+                <h3 class="text-2xl font-black text-gray-800" id="modal-title">記帳</h3>
                 <button id="close-modal" class="text-gray-400 bg-gray-50 p-3 rounded-full"><i data-lucide="x" class="w-6 h-6"></i></button>
             </div>
             <div class="flex bg-gray-100 p-1.5 rounded-2xl mb-6">
-                <button type="button" id="type-income" onclick="setFormType('income')" class="flex-1 py-3 rounded-[14px] text-sm font-black transition-all">收入</button>
-                <button type="button" id="type-expense" onclick="setFormType('expense')" class="flex-1 py-3 rounded-[14px] text-sm font-black transition-all">支出</button>
+                <button type="button" id="type-income" onclick="setFormType('income')" class="flex-1 py-3 rounded-[14px] text-sm font-black transition-all bg-white text-[#FF84C3] shadow-sm">收入</button>
+                <button type="button" id="type-expense" onclick="setFormType('expense')" class="flex-1 py-3 rounded-[14px] text-sm font-black transition-all text-gray-500">支出</button>
             </div>
             <div class="overflow-y-auto no-scrollbar flex-1 space-y-6">
                 <div class="grid grid-cols-2 gap-4">
@@ -225,7 +225,7 @@
     </div>
 
     <script>
-        const STORAGE_KEY = 'comet_local_data_v11';
+        const STORAGE_KEY = 'comet_local_data_v14'; // 升級版本號避免舊格式衝突
         let state = {
             transactions: [],
             campaigns: [{ name: '一般收支', products: [] }],
@@ -240,7 +240,10 @@
 
         // --- Data Persistence ---
         function loadData() {
-            const saved = localStorage.getItem(STORAGE_KEY);
+            // 向下相容，嘗試讀取 V14，若無則讀取舊版 V11
+            let saved = localStorage.getItem(STORAGE_KEY);
+            if (!saved) saved = localStorage.getItem('comet_local_data_v11'); 
+            
             if (saved) {
                 const parsed = JSON.parse(saved);
                 state.transactions = parsed.transactions || [];
@@ -275,9 +278,20 @@
         }
 
         function switchTab(n) {
-            [1, 2, 3].forEach(i => document.getElementById(`tab${i}`).classList.toggle('hidden', i !== n));
-            document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('text-[#FF84C3]', 'border-[#FF84C3]'));
-            document.getElementById(`nav-${n}`).classList.add('text-[#FF84C3]', 'border-[#FF84C3]');
+            [1, 2, 3].forEach(i => {
+                document.getElementById(`tab${i}`).classList.toggle('hidden', i !== n);
+                const nav = document.getElementById(`nav-${i}`);
+                if (i === n) {
+                    // 選中狀態: 粉色文字 + 底部粉色邊框
+                    nav.classList.add('text-[#FF84C3]', 'border-[#FF84C3]');
+                    nav.classList.remove('text-gray-400', 'border-transparent');
+                } else {
+                    // 未選中狀態: 灰色文字 + 透明邊框
+                    nav.classList.remove('text-[#FF84C3]', 'border-[#FF84C3]');
+                    nav.classList.add('text-gray-400', 'border-transparent');
+                }
+            });
+            if (n === 2) renderTab2();
             if (n === 3) renderTab3();
         }
 
@@ -320,11 +334,14 @@
             const renderL = (id, type) => {
                 const items = daily.filter(t => t.type === type);
                 document.getElementById(id).innerHTML = items.length ? items.map(t => `
-                    <div onclick="openEditModal('${t.id}')" class="bg-white p-4 rounded-2xl border border-gray-100 flex justify-between items-center shadow-sm">
-                        <div class="truncate px-2"><span class="block font-black text-sm truncate">${t.item}</span><span class="text-[9px] font-bold text-gray-400">${t.campaign}</span></div>
+                    <div onclick="openEditModal('${t.id}')" class="bg-white p-4 rounded-2xl border border-gray-100 flex justify-between items-center shadow-sm cursor-pointer hover:border-pink-200 transition-colors">
+                        <div class="truncate px-2">
+                            <span class="block font-black text-sm truncate">${t.item}</span>
+                            <span class="text-[9px] font-bold text-gray-400">${t.campaign}</span>
+                        </div>
                         <div class="flex items-center gap-3">
                             <span class="font-black text-lg ${type==='income'?'text-[#FF84C3]':'text-gray-400'}">${formatMoney(t.amount)}</span>
-                            <button onclick="event.stopPropagation(); deleteTx('${t.id}')" class="text-gray-200 hover:text-red-400"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                            <button onclick="event.stopPropagation(); deleteTx('${t.id}')" class="text-gray-200 hover:text-red-400 p-2"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
                         </div>
                     </div>`).join('') : '<p class="text-center py-4 text-[10px] text-gray-300">無紀錄</p>';
             };
@@ -354,9 +371,13 @@
         // --- Transaction Form ---
         function setFormType(type) {
             state.formType = type;
-            const isInc = type === 'income';
-            document.getElementById('type-income').className = `flex-1 py-3 rounded-[14px] text-sm font-black transition-all ${isInc ? 'bg-white text-[#FF84C3] shadow-sm' : 'text-gray-400'}`;
-            document.getElementById('type-expense').className = `flex-1 py-3 rounded-[14px] text-sm font-black transition-all ${!isInc ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-400'}`;
+            if (type === 'income') {
+                document.getElementById('type-income').className = "flex-1 py-3 rounded-[14px] text-sm font-black transition-all bg-white text-[#FF84C3] shadow-sm";
+                document.getElementById('type-expense').className = "flex-1 py-3 rounded-[14px] text-sm font-black transition-all text-gray-500";
+            } else {
+                document.getElementById('type-expense').className = "flex-1 py-3 rounded-[14px] text-sm font-black transition-all bg-white text-gray-700 shadow-sm";
+                document.getElementById('type-income').className = "flex-1 py-3 rounded-[14px] text-sm font-black transition-all text-gray-500";
+            }
         }
 
         function updateCampaignSelect() {
@@ -371,12 +392,23 @@
             if (camp && camp.products.length) {
                 document.getElementById('quick-products-section').classList.remove('hidden');
                 list.innerHTML = camp.products.map(p => `
-                    <button type="button" onclick="state.currentCart.push({name:'${p.name}',price:${p.price},qty:1});renderCart();" class="px-4 py-2 bg-white border border-gray-100 rounded-xl text-xs font-black text-gray-500 shadow-sm active:scale-95">
+                    <button type="button" onclick="addToCart('${p.name}', ${p.price})" class="px-4 py-2 bg-white border border-gray-100 rounded-xl text-xs font-black text-gray-500 shadow-sm active:scale-95">
                         ${p.name}
                     </button>`).join('');
             } else {
                 document.getElementById('quick-products-section').classList.add('hidden');
             }
+        }
+
+        // 快速加入購物車：相同商品自動加總
+        function addToCart(name, price) {
+            const existing = state.currentCart.find(i => i.name === name && i.price === price);
+            if (existing) {
+                existing.qty += 1;
+            } else {
+                state.currentCart.push({ name, price, qty: 1 });
+            }
+            renderCart();
         }
 
         function renderCart() {
@@ -390,10 +422,10 @@
                     </div>
                     <div class="flex items-center bg-gray-50 rounded-xl p-1 gap-2 px-2">
                         <button type="button" onclick="state.currentCart[${idx}].qty=Math.max(1,state.currentCart[${idx}].qty-1);renderCart();"><i data-lucide="minus" class="w-3 h-3 text-gray-400"></i></button>
-                        <span class="text-sm font-black">${item.qty}</span>
+                        <span class="text-sm font-black w-4 text-center">${item.qty}</span>
                         <button type="button" onclick="state.currentCart[${idx}].qty+=1;renderCart();"><i data-lucide="plus" class="w-3 h-3 text-gray-400"></i></button>
                     </div>
-                    <button type="button" onclick="state.currentCart.splice(${idx}, 1); renderCart();" class="text-gray-200"><i data-lucide="x" class="w-5 h-5"></i></button>
+                    <button type="button" onclick="state.currentCart.splice(${idx}, 1); renderCart();" class="text-gray-200 p-2"><i data-lucide="x" class="w-4 h-4"></i></button>
                 </div>`).join('');
             lucide.createIcons();
             calculateCartTotal();
@@ -404,6 +436,7 @@
             document.getElementById('form-total-display').innerText = formatMoney(total);
         }
 
+        // 提交表單 (支援新增與編輯)
         document.getElementById('submit-btn').onclick = () => {
             if (!state.currentCart.length) return;
             const tx = {
@@ -412,38 +445,94 @@
                 type: state.formType,
                 item: state.currentCart.map(i => `${i.name}${i.qty>1?' x'+i.qty:''}`).join(', '),
                 amount: state.currentCart.reduce((s, i) => s + (i.price * i.qty), 0),
-                campaign: state.lastUsedCampaign,
+                campaign: document.getElementById('form-campaign').value,
                 items_detail: JSON.parse(JSON.stringify(state.currentCart))
             };
-            if (state.editingId) state.transactions[state.transactions.findIndex(t => t.id === state.editingId)] = tx;
-            else state.transactions.push(tx);
+            
+            if (state.editingId) {
+                // 編輯覆蓋
+                const idx = state.transactions.findIndex(t => t.id === state.editingId);
+                if(idx !== -1) state.transactions[idx] = tx;
+            } else {
+                // 全新新增
+                state.transactions.push(tx);
+            }
+            
+            state.lastUsedCampaign = tx.campaign;
             saveData();
             document.getElementById('modal-overlay').classList.add('hidden');
             renderAll();
+            
+            // 若從明細進來編輯的，重新打開明細查看結果
+            if(state.editingId) {
+                openDayDetails(tx.date);
+            }
         };
 
+        // 開啟新增模式
         document.getElementById('add-btn').onclick = () => {
-            state.editingId = null; state.currentCart = [];
+            state.editingId = null; 
+            state.currentCart = [];
             document.getElementById('form-date').value = state.selectedDate;
+            document.getElementById('modal-title').innerText = "記帳";
             setFormType('income');
             renderCart();
             updateCampaignSelect();
             document.getElementById('modal-overlay').classList.remove('hidden');
         };
 
+        // 開啟編輯模式
+        window.openEditModal = (id) => {
+            const tx = state.transactions.find(t => t.id === id);
+            if (!tx) return;
+            state.editingId = id;
+            state.formType = tx.type;
+            
+            // 若有詳細商品列表就載入，若無就將總項視為單一商品
+            state.currentCart = tx.items_detail ? JSON.parse(JSON.stringify(tx.items_detail)) : [{ name: tx.item, price: tx.amount, qty: 1 }];
+            
+            document.getElementById('form-date').value = tx.date;
+            document.getElementById('form-campaign').value = tx.campaign;
+            document.getElementById('modal-title').innerText = "編輯紀錄";
+            
+            setFormType(tx.type);
+            updateCampaignSelect();
+            renderCart();
+            
+            // 隱藏背後的日明細列表
+            closeDayDetails();
+            document.getElementById('modal-overlay').classList.remove('hidden');
+        };
+
         document.getElementById('close-modal').onclick = () => document.getElementById('modal-overlay').classList.add('hidden');
 
-        // --- Campaign Management ---
+        // --- Campaign Management (排序與上移/下移) ---
         function openCampaignModal() { renderCampaignManager(); document.getElementById('campaign-modal').classList.remove('hidden'); }
         
+        function moveCampaign(idx, dir) {
+            if (idx + dir < 0 || idx + dir >= state.campaigns.length) return;
+            const temp = state.campaigns[idx];
+            state.campaigns[idx] = state.campaigns[idx + dir];
+            state.campaigns[idx + dir] = temp;
+            saveData();
+            renderCampaignManager();
+            updateCampaignSelect();
+        }
+
         function renderCampaignManager() {
             document.getElementById('campaign-manage-list').innerHTML = state.campaigns.map((c, i) => `
                 <div class="bg-gray-50 rounded-3xl p-5 border border-gray-100">
                     <div class="flex justify-between items-center mb-4">
-                        <span class="font-black text-gray-800">${c.name}</span>
+                        <div class="flex items-center gap-2">
+                            <div class="flex flex-col text-gray-300">
+                                <button onclick="moveCampaign(${i}, -1)" class="hover:text-[#FF84C3]" ${i === 0 ? 'disabled style="opacity:0.3"' : ''}><i data-lucide="chevron-up" class="w-4 h-4"></i></button>
+                                <button onclick="moveCampaign(${i}, 1)" class="hover:text-[#FF84C3]" ${i === state.campaigns.length - 1 ? 'disabled style="opacity:0.3"' : ''}><i data-lucide="chevron-down" class="w-4 h-4"></i></button>
+                            </div>
+                            <span class="font-black text-gray-800">${c.name}</span>
+                        </div>
                         <div class="flex gap-2">
                             <button onclick="openBatchModal(${i})" class="text-[10px] font-black text-pink-500 bg-pink-50 px-2 py-1 rounded-lg">批次匯入</button>
-                            <button onclick="if(confirm('確定刪除團務？歷史紀錄將保留但無法再快速選擇。')){state.campaigns.splice(${i},1);saveData();renderCampaignManager();}" class="text-gray-300"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                            <button onclick="if(confirm('確定刪除團務？歷史紀錄將保留但無法再快速選擇。')){state.campaigns.splice(${i},1);saveData();renderCampaignManager();updateCampaignSelect();}" class="text-gray-300"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
                         </div>
                     </div>
                     <div class="flex flex-wrap gap-2 mb-4">
@@ -464,7 +553,14 @@
 
         function addNewCampaign() {
             const v = document.getElementById('new-camp-input').value.trim();
-            if (v) { state.campaigns.push({ name: v, products: [] }); saveData(); renderCampaignManager(); document.getElementById('new-camp-input').value = ''; }
+            if (v) { 
+                // 將新團務預設排在最前面 (最上面)
+                state.campaigns.unshift({ name: v, products: [] }); 
+                saveData(); 
+                renderCampaignManager(); 
+                updateCampaignSelect();
+                document.getElementById('new-camp-input').value = ''; 
+            }
         }
 
         function addSingleProduct(campIdx) {
@@ -476,7 +572,7 @@
             }
         }
 
-        // --- 優化後的批次匯入邏輯 ---
+        // --- 批次匯入邏輯 ---
         function openBatchModal(campIdx) {
             const modal = document.getElementById('batch-modal');
             const confirmBtn = document.getElementById('batch-confirm-btn');
@@ -489,12 +585,9 @@
                     const cleanLine = line.trim();
                     if (!cleanLine) return;
 
-                    // 解析邏輯：尋找最後一個可能的「數值區塊」
-                    // 1. 先把逗號和 NT$ 這些雜質去掉 (保留負號用於折扣)
                     const parts = cleanLine.split(/\s+|\t+|,/);
                     
                     if (parts.length >= 2) {
-                        // 最後一個部分通常是價格
                         let priceStr = parts[parts.length - 1].replace(/[^\d.-]/g, '');
                         let nameStr = parts.slice(0, parts.length - 1).join(' ').trim();
                         
