@@ -24,6 +24,14 @@
         
         .no-scrollbar::-webkit-scrollbar { display: none; }
         input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+        
+        .year-header {
+            position: sticky;
+            top: 0;
+            background: rgba(248, 250, 252, 0.9);
+            backdrop-blur: sm;
+            z-index: 10;
+        }
     </style>
 </head>
 <body class="selection:bg-[#FF84C3]/30">
@@ -83,10 +91,12 @@
             <div id="calendar-grid" class="grid grid-cols-7 gap-1 touch-pan-y"></div>
         </div>
 
-        <!-- Tab 2: 報表 -->
+        <!-- Tab 2: 跨年度報表 -->
         <div id="tab2" class="hidden flex-col animate-fade-in w-full">
-            <h2 class="text-xl font-bold text-gray-800 mb-6"><span id="current-year-display"></span> 年度月報表</h2>
-            <div id="monthly-container" class="grid grid-cols-1 gap-3"></div>
+            <h2 class="text-2xl font-black text-gray-800 mb-6">收支總覽</h2>
+            <div id="monthly-report-container" class="space-y-8">
+                <!-- 年份分組將生成於此 -->
+            </div>
         </div>
 
         <!-- Tab 3: 分析 -->
@@ -127,7 +137,6 @@
                 </div>
             </div>
 
-            <!-- 團務收益細節 -->
             <h2 class="text-lg font-black text-gray-800 mb-4 ml-2">各團務營收分析</h2>
             <div id="campaign-analysis-container" class="space-y-4"></div>
         </div>
@@ -224,7 +233,7 @@
     </div>
 
     <script>
-        const STORAGE_KEY = 'comet_local_data_v17'; 
+        const STORAGE_KEY = 'comet_local_data_v18'; 
         let state = {
             transactions: [],
             campaigns: [{ name: '一般收支', products: [] }],
@@ -240,7 +249,7 @@
         // --- Data Persistence ---
         function loadData() {
             let saved = localStorage.getItem(STORAGE_KEY);
-            if (!saved) saved = localStorage.getItem('comet_local_data_v16');
+            if (!saved) saved = localStorage.getItem('comet_local_data_v17');
             if (saved) {
                 const parsed = JSON.parse(saved);
                 state.transactions = parsed.transactions || [];
@@ -358,6 +367,67 @@
             document.getElementById('day-details-modal').classList.add('translate-y-full');
             document.getElementById('day-details-overlay').classList.add('opacity-0');
             setTimeout(() => document.getElementById('day-details-overlay').classList.add('hidden'), 300);
+        }
+
+        // --- Tab 2: 跨年度報表邏輯 ---
+        function renderTab2() {
+            const container = document.getElementById('monthly-report-container');
+            if (state.transactions.length === 0) {
+                container.innerHTML = '<div class="text-center py-20 text-gray-300 italic">尚未有交易數據</div>';
+                return;
+            }
+
+            // 將資料按 年份、月份 分組
+            const group = {};
+            state.transactions.forEach(t => {
+                const date = new Date(t.date);
+                const y = date.getFullYear();
+                const m = date.getMonth() + 1;
+                if (!group[y]) group[y] = {};
+                if (!group[y][m]) group[y][m] = { inc: 0, exp: 0 };
+                group[y][m][t.type === 'income' ? 'inc' : 'exp'] += t.amount;
+            });
+
+            // 排序年份與月份 (降序)
+            const sortedYears = Object.keys(group).sort((a, b) => b - a);
+            
+            let html = '';
+            sortedYears.forEach(y => {
+                html += `
+                <div class="space-y-4">
+                    <div class="year-header py-2 border-b border-gray-100 mb-4">
+                        <h3 class="text-lg font-black text-[#FF84C3]">${y} 年度</h3>
+                    </div>
+                    <div class="grid grid-cols-1 gap-3">
+                `;
+                
+                const sortedMonths = Object.keys(group[y]).sort((a, b) => b - a);
+                sortedMonths.forEach(m => {
+                    const data = group[y][m];
+                    const net = data.inc - data.exp;
+                    html += `
+                        <div class="bg-white p-5 rounded-3xl border border-gray-100 flex justify-between items-center shadow-sm">
+                            <div class="flex items-center gap-4">
+                                <div class="w-10 h-10 rounded-full bg-pink-50 flex items-center justify-center font-black text-[#FF84C3] text-sm">
+                                    ${m}月
+                                </div>
+                                <div>
+                                    <div class="text-[10px] font-bold text-gray-300 uppercase tracking-widest">Revenue Details</div>
+                                    <div class="text-xs font-bold text-gray-400">進 ${formatMoney(data.inc)} / 支 ${formatMoney(data.exp)}</div>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-[10px] font-bold text-gray-300 uppercase">Profit</div>
+                                <div class="text-lg font-black ${net >= 0 ? 'text-gray-800' : 'text-red-400'}">${formatMoney(net)}</div>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                html += `</div></div>`;
+            });
+
+            container.innerHTML = html;
         }
 
         // --- Transaction Form ---
@@ -544,6 +614,8 @@
                 saveData(); 
                 renderCampaignManager();
                 renderQuickProducts();
+                document.getElementById(`pn-${campIdx}`).value = '';
+                document.getElementById(`pp-${campIdx}`).value = '';
             }
         }
 
@@ -560,25 +632,24 @@
                     const cleanLine = line.trim();
                     if (!cleanLine) return;
                     
-                    // 1. 先用 Regex 找出字串中第一個數字（支援負號與小數點）
-                    // 邏輯：尋找前面可能帶有貨幣符號，後面跟著數字的區塊
-                    const priceMatch = cleanLine.match(/(-?\d+(\.\d+)?)/);
+                    // 改進的正規表達式，優先抓取數字部分
+                    // \d+([\d,]*\d+)? 支援含逗號的數字，如 1,500
+                    const priceMatch = cleanLine.match(/(-?\d+[\d,.]*)/);
                     
                     if (priceMatch) {
-                        const price = parseFloat(priceMatch[0]);
-                        // 2. 名稱則是數字出現之前的所有內容，並過濾掉尾部空白
-                        let name = cleanLine.split(priceMatch[0])[0].trim();
+                        let priceRaw = priceMatch[0].replace(/,/g, '');
+                        const price = parseFloat(priceRaw);
                         
-                        // 3. 過濾掉名稱末尾常見的貨幣符號或多餘字元 (如 NT$, $, ￥ 等)
-                        name = name.replace(/(NT\$|\$|₩|JPY|￥|元)\s*$/gi, '').trim();
+                        // 名稱是第一個數字之前的所有內容
+                        let namePart = cleanLine.split(priceMatch[0])[0].trim();
                         
-                        // 4. 若名稱為空（可能只有數字），則給予預設
+                        // 過濾名稱末尾常見的干擾字
+                        let name = namePart.replace(/(NT\$|\$|₩|JPY|￥|元|:)\s*$/gi, '').trim();
+                        
                         if (!name) name = "未命名項目";
-                        
                         newProducts.push({ name, price });
                     }
                 });
-                // 將新匯入的排在舊的產品之前
                 state.campaigns[campIdx].products = [...newProducts, ...state.campaigns[campIdx].products];
                 saveData(); 
                 modal.classList.add('hidden'); 
@@ -596,6 +667,20 @@
             document.getElementById('yearly-progress-bar').style.width = `${Math.min(p, 100)}%`;
             const profit = state.transactions.reduce((s, t) => s + (t.type === 'income' ? t.amount : -t.amount), 0);
             document.getElementById('lifetime-total').innerText = formatMoney(profit);
+            
+            // 計算平均月營收 (所有有交易的月份)
+            const activeMonths = new Set();
+            let totalIncome = 0;
+            state.transactions.forEach(t => {
+                if(t.type === 'income') {
+                    const d = new Date(t.date);
+                    activeMonths.add(`${d.getFullYear()}-${d.getMonth()}`);
+                    totalIncome += t.amount;
+                }
+            });
+            const avg = activeMonths.size > 0 ? totalIncome / activeMonths.size : 0;
+            document.getElementById('average-monthly-revenue').innerText = formatMoney(avg);
+
             const analysisContainer = document.getElementById('campaign-analysis-container');
             const campStats = {};
             state.transactions.forEach(t => {
@@ -623,20 +708,6 @@
                         </div>
                     </div>`;
             }).join('');
-        }
-
-        function renderTab2() {
-            const y = new Date().getFullYear();
-            const container = document.getElementById('monthly-container');
-            let h = '';
-            for(let i=12; i>=1; i--) {
-                const txs = state.transactions.filter(t => new Date(t.date).getFullYear() === y && new Date(t.date).getMonth()+1 === i);
-                const inc = txs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-                const exp = txs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-                if (inc === 0 && exp === 0) continue;
-                h += `<div class="bg-white p-5 rounded-3xl border border-gray-100 flex justify-between items-center shadow-sm"><div><span class="text-xs font-black text-gray-300 uppercase">${i}月</span><div class="text-xs font-bold text-gray-400">進 ${formatMoney(inc)} / 支 ${formatMoney(exp)}</div></div><div class="text-lg font-black ${inc-exp>=0?'text-gray-800':'text-red-400'}">${formatMoney(inc-exp)}</div></div>`;
-            }
-            container.innerHTML = h || '<p class="text-center py-10 text-gray-300 italic">尚未有數據</p>';
         }
 
         function addBlankItem() { state.currentCart.push({ name: '新項目', price: 0, qty: 1 }); renderCart(); }
